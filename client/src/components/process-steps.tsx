@@ -29,11 +29,11 @@ export default function ProcessSteps() {
           <div key={step.number} className="flex items-center gap-3">
             <div className="flex items-center gap-3">
               <div className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold text-sm ${
-                step.status === 'completed' 
-                  ? 'bg-green-500 text-white'
-                  : step.status === 'current'
-                  ? 'bg-blue-600 text-white ring-4 ring-blue-200'
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                step.number === 1
+                  ? 'bg-emerald-500 text-white'
+                  : step.number === 2
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-violet-500 text-white'
               }`} data-testid={`step-${step.number}-indicator`}>
                 {step.number}
               </div>
