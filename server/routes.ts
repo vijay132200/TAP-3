@@ -4,8 +4,36 @@ import { storage } from "./storage";
 import { insertSessionSchema, insertMessageSchema } from "@shared/schema";
 import { tacitAgent } from "./services/agent";
 import { z } from "zod";
+import multer from "multer";
+import path from "path";
+import fs from "fs/promises";
+import { processPdf, queryRag, clearRag } from "./services/rag";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Configure multer for PDF uploads
+  const upload = multer({
+    storage: multer.diskStorage({
+      destination: async (req, file, cb) => {
+        const uploadDir = path.join(process.cwd(), 'uploads');
+        await fs.mkdir(uploadDir, { recursive: true });
+        cb(null, uploadDir);
+      },
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, `${uniqueSuffix}-${file.originalname}`);
+      }
+    }),
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype === 'application/pdf') {
+        cb(null, true);
+      } else {
+        cb(new Error('Only PDF files are allowed'));
+      }
+    },
+    limits: {
+      fileSize: 10 * 1024 * 1024 // 10MB limit
+    }
+  });
 
   // Create new session
   app.post('/api/sessions', async (req, res) => {
@@ -166,6 +194,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: 'Failed to clear messages' });
+    }
+  });
+
+  // Upload and process PDF
+  app.post('/api/pdf/upload', upload.single('pdf'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No PDF file uploaded' });
+      }
+
+      const result = await processPdf(req.file.path);
+      
+      // Clean up uploaded file after processing
+      try {
+        await fs.unlink(req.file.path);
+      } catch (cleanupError) {
+        console.error('Failed to cleanup uploaded file:', cleanupError);
+      }
+
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ 
+        error: `Failed to process PDF: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      });
+    }
+  });
+
+  // Query RAG for context
+  app.post('/api/pdf/query', async (req, res) => {
+    try {
+      const { query, k = 3 } = z.object({
+        query: z.string(),
+        k: z.number().optional().default(3)
+      }).parse(req.body);
+
+      const result = await queryRag(query, k);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({
+        error: `Failed to query RAG: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        results: []
+      });
+    }
+  });
+
+  // Clear all indexed PDFs
+  app.delete('/api/pdf/clear', async (req, res) => {
+    try {
+      const result = await clearRag();
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ 
+        error: `Failed to clear RAG: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      });
     }
   });
 
