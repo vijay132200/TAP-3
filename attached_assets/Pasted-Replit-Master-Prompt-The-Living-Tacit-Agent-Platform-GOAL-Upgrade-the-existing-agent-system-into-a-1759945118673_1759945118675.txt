@@ -1,0 +1,88 @@
+Replit Master Prompt: The Living Tacit Agent Platform
+GOAL: Upgrade the existing agent system into a Living Knowledge Platform where non-technical experts can constantly feed, manage, and evolve the agent’s tacit knowledge base without writing code.
+
+LLM BACKEND: The agent must use a Google Gemini model (Gemini-2.5-Flash) for its reasoning engine to ensure zero running costs.    
+
+CORE FEATURES TO ADD:
+
+Persistent Rule Vault: Allow the user to save, edit, and use a set of custom heuristics written directly into a text box.
+
+Document RAG Integration: Enable the upload of PDF documents to serve as additional, retrievable tacit knowledge sources.    
+
+Knowledge Scanner: The agent must actively scan and propose to save new tacit knowledge detected in the user’s conversational prompts.
+
+1. Required Application Components & Architecture
+The application must be built using the LangChain/LangGraph framework for agent control and Streamlit for the UI.
+
+Component	Purpose (Non-Technical Explanation)	Required Architecture
+Persistent Rules Vault	Storage: A local JSON file (tacit_rules.json) to save and edit the expert's core, non-document rules (e.g., "Always use Rule X when market is volatile").	Must include functions to Save, Load, and Edit the persistent rules file using Python (simulating a lightweight database).
+Document RAG System	
+PDF Source: A specialized system that reads uploaded PDFs, breaks them into searchable chunks, and indexes them into a vector store (e.g., FAISS).    
+
+Requires LangChain's document loading and retrieval components (PyPDFLoader, vector store, retriever).
+Knowledge Scanner Chain	Auto-Detection: A dedicated, lightweight LLM chain that scans every user input for phrases that sound like new rules or heuristics, and formats them for saving.	Must use Structured Output (Pydantic schema) to extract new knowledge from the chat and propose it to the user for saving.
+Agent Reasoning Engine	
+The core brain, responsible for choosing between consulting the Rules Vault, the PDF Source, or the External Search tool.    
+
+Must use LangGraph with conversational memory to manage state across turns.    
+
+2. Replit Secrets Configuration
+The project must be configured with the necessary API keys.
+
+ACTION: The Replit environment MUST be configured with the following secrets:
+
+Secret Key	Purpose	Required Value
+GEMINI_API_KEY	Mandatory for the core LLM and the Knowledge Scanner.	**
+TAVILY_API_KEY	Required for the agent's general, up-to-date external search capabilities.	**
+
+Export to Sheets
+3. Detailed Web Application Layout
+Generate the application with the following layout and features implemented in Python/Streamlit:
+
+A. Sidebar: Expert Control & Knowledge Management
+This sidebar serves as the control center for the non-technical expert.
+
+Tacit Rule Vault (Persistence)
+
+Text Area: A large text box labeled "My Core Tacit Rules (Editable)." This box should LOAD the content of the tacit_rules.json file on startup.
+
+Button: A button labeled "Save and Update Agent Rules." (When clicked, it writes the content of the text area back to tacit_rules.json, making the changes permanent.)
+
+PDF Document Upload (RAG Source)
+
+File Uploader: A component labeled "Upload Tacit Policy Documents (PDFs)."
+
+Status Indicator: Shows the current status of the vector store (e.g., "2 Documents Indexed"). (When a PDF is uploaded, the code must process and index it into a temporary local vector store.)
+
+Governance & Reset
+
+Toggle: "Enable Human-in-the-Loop (HIL) Veto."
+
+Button: "Reset Chat Session."
+
+B. Main Content Area: Interactive Chat and Knowledge Scanner
+Chat Interface: A standard chat window for conversation.
+
+Agent Reasoning: The agent must follow a specific, chained process for every user input:
+
+Sub-Step 1: Knowledge Scanner
+
+Before responding, the agent must run the Knowledge Scanner Chain (using structured output) against the user's input to detect any potential new rules (e.g., "From now on, I prioritize speed on all Phase 1 documents.").
+
+Sub-Step 2: Scanner Output
+
+If the scanner detects a new rule, a prominent banner must appear in the UI: "New Tacit Knowledge Detected! Do you want to save this rule?" with a button labeled "Approve and Add to Rules Vault."
+
+Sub-Step 3: Primary Agent Response
+
+The main agent must check three sources in order to respond:
+
+The rules loaded from the Tacit Rule Vault (JSON file).
+
+The rules contained in the PDF Document RAG System.
+
+The External Search tool (Tavily).
+
+Output Visualization:
+
+The agent's response must explicitly state which source it used (e.g., "Response based on Rule 4b from the Tacit Rule Vault" or "Response based on Page 3 of the indexed PDF document")

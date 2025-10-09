@@ -1,0 +1,44 @@
+This prompt is specifically designed for the Replit website creation tool. It instructs the platform on how to securely and efficiently replace the current high-cost OpenAI backend with a free, high-performance alternative, ensuring the entire application remains functional and cost-effective.
+
+The focus is solely on updating the necessary technical components for the LLM switch, maintaining the existing Streamlit UI, the custom Tacit Knowledge Module, and the robust LangChain/LangGraph agent architecture.
+
+Replit Prompt: LLM Backend Conversion (Zero-Cost Gemini Integration)
+GOAL: Modify the existing Tacit Agent Platform project to use a zero-cost, high-performance LLM backend instead of OpenAI, ensuring the agent's core functions (tacit knowledge application, memory, and governance) remain perfect.
+
+NEW LLM BACKEND: The project must be switched to use a Google Gemini model (e.g., Gemini-2.5-Flash), leveraging its robust, free API access for LangChain integration.    
+
+MAINTENANCE MANDATE: Preserve the existing Streamlit UI structure, the TacitKnowledgeRAG tool definition, the LangGraph control flow, and the conversational memory implementation.
+
+1. Configuration Changes (The New Free Key)
+The Replit environment must be updated to use the new key for the LLM integration.
+
+Secret Key to REMOVE	Secret Key to ADD	Purpose (New Backend)
+OPENAI_API_KEY	GEMINI_API_KEY	This is the mandatory key required to connect the LangChain framework to the Google Gemini model.
+
+Export to Sheets
+(Note: The existing TAVILY_API_KEY secret must be retained for the general search tool.)
+
+2. Application Logic Swap (Non-Code Instructions)
+The Replit AI must implement the following changes in the Python logic to switch the LLM source:
+
+Component	Original Implementation	New Implementation (Zero-Cost)
+LLM Connector Library	Library optimized for OpenAI.	
+Library optimized for Google Gemini (e.g., the official langchain-google-genai integration).    
+
+Model Initialization	Reference to an OpenAI model (e.g., gpt-4o).	Reference to a reliable Gemini model that supports tool calling (e.g., Gemini-2.5-Flash).
+Agent Creation Logic	
+Maintain the use of the LangChain/LangGraph framework to assemble the agent from the LLM, the TavilySearch tool, and the TacitKnowledgeRAG custom tool.    
+
+Core Focus: The system must ensure that the new Gemini agent successfully interprets the function definition for the TacitKnowledgeRAG tool, prioritizing the expert's rules for questions about risk and communication style, as defined in the original tacit knowledge module.    
+
+3. Final Execution Check
+The Python application (run via Streamlit) must verify the following at startup:
+
+Check for the presence of the GEMINI_API_KEY secret.
+
+Initialize the chat session using the new Gemini model.
+
+Display a clear message in the UI confirming that the agent is powered by Google Gemini (zero-cost backend).
+
+
+Sources and related content

@@ -1,0 +1,68 @@
+Replit Master Prompt: The Tacit Agent Platform (TAP)
+PROJECT GOAL: Create a highly detailed, interactive web application that demonstrates how non-technical experts can easily build and govern an AI Agent based purely on their unique, specialized tacit knowledge (unwritten expert rules).
+
+CORE FUNCTIONALITY: The system must validate that the agent prioritizes the expert's private judgment over general information.
+
+RESOURCE MANDATE (Zero-Cost): To ensure minimal running costs, the system must utilize the best available free or low-cost, high-performance open-source models and resources (e.g., models available via the Hugging Face Hub, and free search APIs) for the reasoning engine, integrating them via the flexible LangChain framework.    
+
+1. Required Application Components
+The final web application must consist of three decoupled, high-value components:
+
+Component	Purpose (Non-Technical Explanation)	Required Architecture
+Autonomous Reasoning Engine	
+The agent's "brain" that analyzes the user's question, decides the best course of action, and selects which tool to use.    
+
+Must use a robust state-management framework (e.g., LangChain/LangGraph) to handle multi-turn conversations and reliably decide when to call the custom tool.    
+
+Proprietary Knowledge Module	A highly specialized tool dedicated to consulting the expert's private knowledge base (the captured tacit judgment).	
+Must be a custom-defined function that contains specialized heuristics (e.g., proprietary risk thresholds or communication styles) that the Reasoning Engine is instructed to prioritize.    
+
+Visual Control Panel (UI)	
+The web interface where the expert interacts with the agent and controls its behavior without touching any underlying code.    
+
+Must be a simple, dynamic web application (e.g., Streamlit) with an explicit sidebar for governance controls.    
+
+2. The 3-Step Agent Creation Process (Interactive Demo)
+The web application must visually demonstrate the following three easy steps for a non-technical user:
+
+Step	Action by the Non-Technical Expert (Visualized on Screen)	Outcome / Governance Mechanism
+Step 1: Codify the Tacit Knowledge	The expert provides their unique rules and unwritten best practices (heuristics) via structured text input.	
+These rules are embedded directly into the Proprietary Knowledge Module, making the agent's expertise highly specific and proprietary.    
+
+Step 2: Govern the Agent's Brain	
+The expert adjusts the System Prompt (the Agent's core instructions) using a large text box in the Visual Control Panel (sidebar).    
+
+This changes the agent's tone, focus, and rule-following priority instantly, providing full behavioral control without code updates.
+Step 3: Test and Enforce Safety	The expert enables the Human-in-the-Loop (HIL) toggle in the Control Panel.	
+The agent is forced to pause and issue a clear warning (Visibility of System Status heuristic ) for any high-risk action (like applying a non-standard risk assessment), requiring expert confirmation before proceeding.    
+
+3. Detailed Web Application Layout
+Generate a clean, professional web application using a layout suitable for a quick deployment environment (like Streamlit).
+
+A. Sidebar (Visual Control Panel)
+Header: "Agent Governance (Expert Control)"
+
+Component 1 (Text Area): Large input box for the System Prompt. (This is where the non-technical expert writes the agent's core rules and personality.)
+
+Component 2 (Toggle Switch): Clearly labeled "Enable Human-in-the-Loop (HIL) Veto."
+
+Component 3 (Button): "Reset Session" button to clear conversational memory.
+
+B. Main Content Area (Chat Interface)
+Header: "Tacit Agent Platform: Live Demonstration"
+
+Display Area: A scrolling chat window to show the conversation history.
+
+Interaction Indicator: Must clearly display when the agent is "Reasoning..." or "Consulting Tacit Knowledge..." to maintain user trust.    
+
+Special Warning Display: If the HIL switch is active, a highly visible, colored box must appear in the chat stream when a high-risk scenario is triggered, demanding expert confirmation.
+
+4. Execution Instructions (Non-Code)
+Ensure the generated Python application is ready to run immediately upon opening the Replit environment.
+
+The environment must be configured to use the necessary libraries (LangChain, Streamlit, etc.).
+
+The system must rely on Replit Secrets for API authentication (for the open-source model endpoint and search tool), minimizing setup time.
+
+
+Sources and related content
