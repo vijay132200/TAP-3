@@ -2,7 +2,10 @@ import { Session, AgentStatusType } from '@/types/agent';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { RotateCcw, Settings, Brain, Shield, Zap } from 'lucide-react';
+import { RotateCcw, Settings, Brain, Shield, Zap, Upload, FileText, X } from 'lucide-react';
+import { useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
 
 interface SidebarProps {
   session: Session;
@@ -19,6 +22,9 @@ export default function Sidebar({
   agentStatus,
   isLoading
 }: SidebarProps) {
+  const { toast } = useToast();
+  const [uploadedDocs, setUploadedDocs] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   
   const handleSystemPromptChange = (value: string) => {
     onUpdateSession({ systemPrompt: value });
@@ -30,6 +36,64 @@ export default function Sidebar({
 
   const handleHILToggle = (enabled: boolean) => {
     onUpdateSession({ hilEnabled: enabled });
+  };
+
+  const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+
+    try {
+      for (const file of Array.from(files)) {
+        const formData = new FormData();
+        formData.append('pdf', file);
+
+        const response = await fetch('/api/pdf/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to upload ${file.name}`);
+        }
+
+        const result = await response.json();
+        setUploadedDocs(prev => [...prev, result.filename || file.name]);
+        
+        toast({
+          title: "PDF Uploaded",
+          description: `${file.name} has been processed and indexed successfully.`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Upload Failed",
+        description: error instanceof Error ? error.message : "Failed to upload PDF",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploading(false);
+      // Reset input
+      event.target.value = '';
+    }
+  };
+
+  const handleClearDocs = async () => {
+    try {
+      await apiRequest('DELETE', '/api/pdf/clear');
+      setUploadedDocs([]);
+      toast({
+        title: "Documents Cleared",
+        description: "All uploaded PDFs have been removed from the knowledge base.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to clear documents",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -86,6 +150,71 @@ export default function Sidebar({
           </label>
           <p className="text-xs text-muted-foreground" data-testid="tacit-knowledge-help">
             Define your specialized heuristics and unwritten best practices.
+          </p>
+        </div>
+
+        {/* PDF Document Upload */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-foreground" data-testid="pdf-upload-label">PDF Document Knowledge</span>
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+              RAG Source
+            </span>
+          </div>
+          
+          <div className="border-2 border-dashed border-border rounded-lg p-4 hover:border-primary/50 transition-colors">
+            <label className="cursor-pointer block" data-testid="pdf-upload-area">
+              <input
+                type="file"
+                accept=".pdf"
+                multiple
+                onChange={handlePdfUpload}
+                disabled={isUploading}
+                className="hidden"
+                data-testid="pdf-upload-input"
+              />
+              <div className="flex flex-col items-center gap-2 text-center">
+                <Upload className="w-8 h-8 text-muted-foreground" />
+                <p className="text-sm font-medium text-foreground">
+                  {isUploading ? 'Uploading...' : 'Upload PDF Documents'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Click to select policy documents
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {uploadedDocs.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-muted-foreground" data-testid="pdf-count">
+                  {uploadedDocs.length} document(s) indexed
+                </p>
+                <Button
+                  onClick={handleClearDocs}
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  data-testid="clear-docs-button"
+                >
+                  <X className="w-3 h-3 mr-1" />
+                  Clear All
+                </Button>
+              </div>
+              <div className="space-y-1 max-h-24 overflow-y-auto">
+                {uploadedDocs.map((doc, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 bg-muted/30 rounded text-xs" data-testid={`uploaded-doc-${idx}`}>
+                    <FileText className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                    <span className="truncate text-foreground">{doc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground" data-testid="pdf-upload-help">
+            Upload PDFs containing policies, procedures, or specialized knowledge for the agent to reference.
           </p>
         </div>
 
