@@ -209,6 +209,27 @@ export default function ChatInterface({
                         <div className="text-sm text-foreground whitespace-pre-wrap" data-testid={`assistant-message-${index}`}>
                           {message.content}
                         </div>
+                        
+                        {/* Knowledge Sources Indicator */}
+                        {message.metadata?.knowledgeUsed && message.metadata.knowledgeUsed.length > 0 && (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <span className="text-xs text-muted-foreground">Sources:</span>
+                            {message.metadata.knowledgeUsed.map((source: string, idx: number) => (
+                              <span 
+                                key={idx} 
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                  source.includes('PDF') || source.includes('Page')
+                                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                                    : 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
+                                }`}
+                                data-testid={`knowledge-source-${index}-${idx}`}
+                              >
+                                {source}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        
                         <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
                           <Clock className="w-4 h-4" />
                           <span data-testid={`assistant-message-time-${index}`}>{formatTime(message.timestamp)}</span>
