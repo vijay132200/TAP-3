@@ -1,5 +1,6 @@
 import { AgentStatusType, AgentResponse } from "@shared/schema";
 import { generateAgentResponse, processHumanApproval } from "./gemini";
+import { queryRag } from "./rag";
 
 export class TacitAgent {
   private currentStatus: AgentStatusType = 'idle';
@@ -27,14 +28,28 @@ export class TacitAgent {
       
       this.currentStatus = 'consulting_knowledge';
       
-      // Simulate knowledge consultation delay
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Query RAG for PDF context
+      const ragResult = await queryRag(userMessage, 3);
+      let pdfContext = '';
+      const ragSources: string[] = [];
+      
+      if (ragResult.success && ragResult.results && ragResult.results.length > 0) {
+        pdfContext = ragResult.results
+          .map((doc, idx) => {
+            const page = doc.metadata.page || '?';
+            ragSources.push(`PDF Page ${page}`);
+            return `PDF Source (Page ${page}):\n${doc.content}`;
+          })
+          .join('\n\n');
+      }
       
       const response = await generateAgentResponse(
         systemPrompt,
         tacitKnowledge,
         userMessage,
-        conversationHistory
+        conversationHistory,
+        pdfContext,
+        ragSources
       );
       
       if (response.requiresApproval && hilEnabled) {

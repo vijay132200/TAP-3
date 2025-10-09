@@ -8,7 +8,9 @@ export async function generateAgentResponse(
   systemPrompt: string,
   tacitKnowledge: string,
   userMessage: string,
-  conversationHistory: Array<{role: string, content: string}>
+  conversationHistory: Array<{role: string, content: string}>,
+  pdfContext?: string,
+  ragSources?: string[]
 ): Promise<{
   content: string;
   reasoning: string;
@@ -41,7 +43,19 @@ export async function generateAgentResponse(
   });
 
   // Build conversation history for Gemini, prepending system context
-  const systemContext = `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nPROPRIETARY KNOWLEDGE MODULE:\n${tacitKnowledge}\n\nIMPORTANT: Always prioritize the proprietary knowledge above over general information.\n\nPlease acknowledge that you understand these instructions.`;
+  let systemContext = `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nPROPRIETARY KNOWLEDGE MODULE (Tacit Rules):\n${tacitKnowledge}`;
+  
+  if (pdfContext && pdfContext.trim()) {
+    systemContext += `\n\nPDF DOCUMENT KNOWLEDGE:\n${pdfContext}`;
+  }
+  
+  systemContext += `\n\nIMPORTANT: 
+1. ALWAYS prioritize Proprietary Knowledge (Tacit Rules) first
+2. Use PDF Document Knowledge for detailed policy information
+3. Clearly state which source(s) you're using in your response
+4. If using tacit rules, reference them explicitly
+
+Please acknowledge that you understand these instructions.`;
   
   const chatHistory = [
     {
@@ -68,12 +82,18 @@ export async function generateAgentResponse(
   const knowledgeAreas = tacitKnowledge.split('\n')
     .filter(line => line.trim().match(/^\d+\./))
     .map((_, idx) => `Rule ${idx + 1}`);
+  
+  // Combine knowledge sources
+  const allKnowledgeSources = [...knowledgeAreas];
+  if (ragSources && ragSources.length > 0) {
+    allKnowledgeSources.push(...ragSources);
+  }
 
   return {
     content: response.text() || "I apologize, but I couldn't generate a response.",
     reasoning,
     requiresApproval: isHighRisk,
-    knowledgeUsed: isHighRisk ? knowledgeAreas : []
+    knowledgeUsed: isHighRisk ? allKnowledgeSources : (ragSources && ragSources.length > 0 ? ragSources : [])
   };
 }
 
