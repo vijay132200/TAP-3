@@ -1,0 +1,99 @@
+Replit Master Prompt: Living Tacit Agent with PDF RAG
+GOAL: Upgrade the existing Tacit Agent Platform to integrate Document RAG, allowing non-technical experts to upload PDF documents containing specialized policies or procedures (tacit knowledge) and have the agent instantly respond based on that private data.
+
+LLM BACKEND: The agent must use the Google Gemini model (Gemini-2.5-Flash) for its reasoning engine to ensure zero running costs.    
+
+CORE FEATURES TO IMPLEMENT:
+
+Document Upload & Indexing: A file uploader for PDFs and a system to convert these into a searchable knowledge base.    
+
+Multimodal RAG Tool: The agent must gain a new tool that queries this PDF knowledge base.
+
+Persistent Rule Vault: The existing system to save and load handwritten rules (tacit_rules.json) must be maintained.
+
+Knowledge Scanner: The agent must maintain the ability to detect and propose new rules from chat prompts.
+
+1. Required Libraries Update (The Document Stack)
+The Replit environment must install the following essential libraries for PDF processing and vector storage.
+
+ACTION: The Replit AI must ensure the requirements.txt file includes the following packages:
+
+Plaintext
+
+streamlit
+langchain-google-genai
+langchain-core
+langchain-tavily
+langgraph
+pydantic
+pypdf # NEW: Required for PDF loading
+faiss-cpu # NEW: Lightweight local vector store
+langchain-community # NEW: For document loading components
+2. Application Logic Update: main.py Instructions
+The Replit AI must update the Python logic (main.py) to handle the new document pipeline and the modified tool selection process.
+
+A. Knowledge Pipeline Setup (New Functions)
+The code must include the necessary functions to manage the new RAG system:
+
+load_and_index_pdf(uploaded_file):
+
+Takes the uploaded PDF.
+
+Uses a LangChain Document Loader (e.g., PyPDFLoader) to read the content.
+
+Uses a Text Splitter (e.g., RecursiveCharacterTextSplitter) to break the text into small, searchable chunks.
+
+Embeds the chunks (using a free embedding model, e.g., Sentence Transformers via LangChain) and stores them in a FAISS Vector Store.    
+
+Returns a Retriever object.
+
+DocumentRAGSearch(query):
+
+This is the new custom tool the agent calls.
+
+It uses the stored RAG Retriever to find relevant policy text based on the query.
+
+It returns the retrieved text chunks to the main agent for final summarization.
+
+B. Tool Definition Update
+The agent's available tools must be expanded to include the new RAG tool.
+
+Tool Name	Source	Purpose
+TacitRuleSearch	Internal JSON file (tacit_rules.json).	Retrieval for simple, handwritten heuristics. (Maintenance of existing feature)
+DocumentRAGSearch	Vector Store (FAISS) created from PDF uploads.	
+Retrieval for complex, document-based policy knowledge. (New feature)    
+
+TavilySearch	External API.	Retrieval for general, up-to-date facts.
+C. Agent Orchestration
+The agent's main system prompt must be updated to guide its decision-making based on these new sources:
+
+The agent must be instructed to check the TacitRuleSearch first for quick heuristics, then the DocumentRAGSearch for policy details, and only use TavilySearch as a last resort for external facts.    
+
+3. Detailed Web Application Layout (Streamlit UI)
+The Replit AI must generate a Streamlit UI that seamlessly integrates the new RAG component:
+
+A. Sidebar: Expert Control & Knowledge Management
+PDF Document Upload (New Feature)
+
+File Uploader: Component for uploading one or more .pdf files.
+
+Status Indicator: Label showing the number of indexed documents and confirming when indexing is complete (e.g., "Indexing 2 Documents - Ready").    
+
+Tacit Rule Vault (Persistence)
+
+The existing text area to Load/Edit/Save simple heuristics (tacit_rules.json) must be preserved.
+
+Governance & Reset
+
+The HIL Toggle and Reset Button must be preserved.
+
+B. Main Content Area: Interactive Chat
+Output Visualization: When the agent responds, it must explicitly state which RAG tool was used to source the answer:
+
+"Response based on Tacit Rule Vault."
+
+"Response based on Indexed PDF Documents."
+
+"Response based on External Search."
+
+The successful implementation of this prompt will result in a robust AI agent that is easily managed by non-technical experts, capable of answering questions using three distinct, prioritized knowledge sources, including complex policy documents.
