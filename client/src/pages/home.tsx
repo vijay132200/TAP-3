@@ -175,7 +175,7 @@ export default function Home() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-foreground" data-testid="title">Tacit Agent Platform</h1>
-              <p className="text-sm text-muted-foreground mt-1" data-testid="subtitle">Live Demonstration - Expert-Driven AI Agent • Powered by Google Gemini (Zero-Cost)</p>
+              <p className="text-sm text-muted-foreground mt-1" data-testid="subtitle">Expert-Driven AI Agent with Human-in-the-Loop Safety Controls</p>
             </div>
           </div>
         </header>

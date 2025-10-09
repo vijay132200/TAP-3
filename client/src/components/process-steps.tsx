@@ -5,19 +5,19 @@ export default function ProcessSteps() {
     {
       number: 1,
       title: "Codify Knowledge",
-      description: "Define tacit rules",
+      description: "Add custom rules in the sidebar",
       status: "completed"
     },
     {
       number: 2,
-      title: "Govern Agent Brain",
-      description: "Adjust system prompt",
+      title: "Configure Agent",
+      description: "Set system prompt & enable HIL",
       status: "current"
     },
     {
       number: 3,
-      title: "Test & Enforce Safety",
-      description: "Enable HIL mode",
+      title: "Chat & Monitor",
+      description: "Test agent responses with safety",
       status: "pending"
     }
   ];

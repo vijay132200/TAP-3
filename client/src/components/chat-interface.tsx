@@ -158,9 +158,9 @@ export default function ChatInterface({
               </div>
               <div className="flex-1">
                 <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
-                  <p className="text-sm font-medium text-primary mb-2" data-testid="system-intro-title">System Initialized - Google Gemini Backend Active</p>
+                  <p className="text-sm font-medium text-primary mb-2" data-testid="system-intro-title">System Initialized - AI Backend Active</p>
                   <p className="text-sm text-foreground" data-testid="system-intro-content">
-                    Welcome to the Tacit Agent Platform. I'm your AI assistant powered by Google Gemini (zero-cost backend), configured with your expert knowledge and ready to help. 
+                    Welcome to the Tacit Agent Platform. I'm your AI assistant configured with your expert knowledge and ready to help. 
                     All my decisions will prioritize your proprietary rules over general information.
                   </p>
                   <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
