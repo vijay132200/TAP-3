@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 RAG Service for PDF Document Processing
-Handles PDF upload, indexing, and semantic search
+Handles PDF upload, indexing, and semantic search using TF-IDF
 """
 
 import os
@@ -11,28 +11,17 @@ import pickle
 from pathlib import Path
 from typing import List, Dict, Optional
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 VECTOR_STORE_PATH = Path("vector_store")
-VECTOR_STORE_FILE = VECTOR_STORE_PATH / "faiss_index"
-
-def initialize_embeddings():
-    """Initialize Google embeddings"""
-    api_key = os.getenv('GEMINI_API_KEY')
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in environment variables")
-    return GoogleGenerativeAIEmbeddings(
-        model="models/embedding-001",
-        google_api_key=api_key
-    )
+VECTOR_STORE_FILE = VECTOR_STORE_PATH / "tfidf_index.pkl"
 
 def process_pdf(pdf_path: str) -> Dict:
     """Process a PDF and add to vector store"""
     try:
-        embeddings = initialize_embeddings()
-        
         # Load PDF
         loader = PyPDFLoader(pdf_path)
         documents = loader.load()
@@ -44,24 +33,42 @@ def process_pdf(pdf_path: str) -> Dict:
         )
         splits = text_splitter.split_documents(documents)
         
+        # Extract text and metadata
+        texts = [doc.page_content for doc in splits]
+        metadata = [doc.metadata for doc in splits]
+        
         # Create or update vector store
         VECTOR_STORE_PATH.mkdir(exist_ok=True)
         
         if VECTOR_STORE_FILE.exists():
-            # Load existing and merge
-            vectorstore = FAISS.load_local(
-                str(VECTOR_STORE_FILE), 
-                embeddings,
-                allow_dangerous_deserialization=True
-            )
-            new_vectorstore = FAISS.from_documents(splits, embeddings)
-            vectorstore.merge_from(new_vectorstore)
+            # Load existing and append
+            with open(VECTOR_STORE_FILE, 'rb') as f:
+                store_data = pickle.load(f)
+            
+            store_data['texts'].extend(texts)
+            store_data['metadata'].extend(metadata)
+            
+            # Refit vectorizer with all texts
+            vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
+            tfidf_matrix = vectorizer.fit_transform(store_data['texts'])
+            
+            store_data['vectorizer'] = vectorizer
+            store_data['tfidf_matrix'] = tfidf_matrix
         else:
             # Create new
-            vectorstore = FAISS.from_documents(splits, embeddings)
+            vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')
+            tfidf_matrix = vectorizer.fit_transform(texts)
+            
+            store_data = {
+                'texts': texts,
+                'metadata': metadata,
+                'vectorizer': vectorizer,
+                'tfidf_matrix': tfidf_matrix
+            }
         
         # Save
-        vectorstore.save_local(str(VECTOR_STORE_FILE))
+        with open(VECTOR_STORE_FILE, 'wb') as f:
+            pickle.dump(store_data, f)
         
         return {
             "success": True,
@@ -84,22 +91,31 @@ def query_vector_store(query: str, k: int = 3) -> Dict:
                 "message": "No documents indexed yet"
             }
         
-        embeddings = initialize_embeddings()
-        vectorstore = FAISS.load_local(
-            str(VECTOR_STORE_FILE), 
-            embeddings,
-            allow_dangerous_deserialization=True
-        )
+        # Load vector store
+        with open(VECTOR_STORE_FILE, 'rb') as f:
+            store_data = pickle.load(f)
         
-        # Perform similarity search
-        docs = vectorstore.similarity_search(query, k=k)
+        vectorizer = store_data['vectorizer']
+        tfidf_matrix = store_data['tfidf_matrix']
+        texts = store_data['texts']
+        metadata = store_data['metadata']
+        
+        # Transform query
+        query_vector = vectorizer.transform([query])
+        
+        # Calculate similarity
+        similarities = cosine_similarity(query_vector, tfidf_matrix).flatten()
+        
+        # Get top k results
+        top_indices = np.argsort(similarities)[-k:][::-1]
         
         results = []
-        for doc in docs:
-            results.append({
-                "content": doc.page_content,
-                "metadata": doc.metadata
-            })
+        for idx in top_indices:
+            if similarities[idx] > 0:  # Only include if there's some similarity
+                results.append({
+                    "content": texts[idx],
+                    "metadata": metadata[idx]
+                })
         
         return {
             "success": True,
