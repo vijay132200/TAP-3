@@ -19,7 +19,7 @@ interface RagResult {
 async function callPythonRag(command: string, ...args: string[]): Promise<RagResult> {
   return new Promise((resolve, reject) => {
     const pythonScript = path.join(process.cwd(), 'rag_service.py');
-    const python = spawn('python3', [pythonScript, command, ...args]);
+    const python = spawn('uv', ['run', 'python3', pythonScript, command, ...args]);
     
     let stdout = '';
     let stderr = '';
