@@ -5,10 +5,11 @@ import { z } from 'zod';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const messages = await storage.getMessages(params.id);
+    const { id } = await params;
+    const messages = await storage.getMessages(id);
     return NextResponse.json(messages);
   } catch (error) {
     return NextResponse.json({ error: 'Failed to retrieve messages' }, { status: 500 });
@@ -17,25 +18,26 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const { content } = z.object({ content: z.string() }).parse(body);
-    const session = await storage.getSession(params.id);
+    const session = await storage.getSession(id);
     
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
 
     await storage.createMessage({
-      sessionId: params.id,
+      sessionId: id,
       role: 'user',
       content,
       metadata: null
     });
 
-    const messages = await storage.getMessages(params.id);
+    const messages = await storage.getMessages(id);
     const conversationHistory = messages
       .filter(m => m.role !== 'system')
       .map(m => ({ role: m.role, content: m.content }));
@@ -49,7 +51,7 @@ export async function POST(
     );
 
     const savedMessage = await storage.createMessage({
-      sessionId: params.id,
+      sessionId: id,
       role: 'assistant',
       content: agentResponse.content,
       metadata: {
@@ -71,10 +73,11 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await storage.clearMessages(params.id);
+    const { id } = await params;
+    await storage.clearMessages(id);
     tacitAgent.reset();
     return NextResponse.json({ success: true });
   } catch (error) {

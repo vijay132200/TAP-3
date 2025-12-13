@@ -5,15 +5,16 @@ import { z } from 'zod';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const { decision } = z.object({ 
       decision: z.enum(['approve', 'reject', 'modify'])
     }).parse(body);
     
-    const session = await storage.getSession(params.id);
+    const session = await storage.getSession(id);
     if (!session) {
       return NextResponse.json({ error: 'Session not found' }, { status: 404 });
     }
@@ -25,7 +26,7 @@ export async function POST(
     );
 
     const savedMessage = await storage.createMessage({
-      sessionId: params.id,
+      sessionId: id,
       role: 'assistant',
       content: agentResponse.content,
       metadata: {
