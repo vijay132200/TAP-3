@@ -22,15 +22,13 @@
 [x] 15. Restarted workflow - server running on port 5000
 
 ## Vercel Deployment Issue
-[x] 16. Identified Vercel incompatibility issues:
-    - In-memory storage (MemStorage) is stateless on Vercel
-    - Python RAG service (child process spawning) not supported
-    - File uploads with multer won't persist
-    - Express server needs long-running process, not serverless
-[x] 17. Recommended using Replit's built-in publishing instead of Vercel
+[x] 16. Identified Vercel incompatibility issues with Express app
+[x] 17. Found existing Next.js app in nextjs-app folder designed for Vercel
+[x] 18. Fixed TypeScript issues in nextjs-app/lib/rag.ts
+[x] 19. Tested Next.js build - successful
+[x] 20. Updated README with detailed Vercel deployment instructions
 
 ## Current Status
-- ✅ Application running successfully on port 5000 (Replit)
-- ✅ PDF upload now uses TF-IDF (no API keys required, no rate limits)
-- ✅ Lightweight solution with minimal disk usage
-- ⚠️ Vercel deployment not compatible - use Replit publishing instead
+- ✅ Express app running on Replit (port 5000)
+- ✅ Next.js app ready for Vercel deployment (in nextjs-app folder)
+- ✅ User needs to deploy the `nextjs-app` folder to Vercel (set Root Directory)
