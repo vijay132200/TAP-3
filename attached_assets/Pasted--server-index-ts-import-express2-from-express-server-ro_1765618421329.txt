@@ -1,0 +1,723 @@
+// server/index.ts
+import express2 from "express";
+
+// server/routes.ts
+import { createServer } from "http";
+
+// server/storage.ts
+import { randomUUID } from "crypto";
+var MemStorage = class {
+  sessions;
+  messages;
+  constructor() {
+    this.sessions = /* @__PURE__ */ new Map();
+    this.messages = /* @__PURE__ */ new Map();
+  }
+  async createSession(insertSession) {
+    const id = randomUUID();
+    const session = {
+      ...insertSession,
+      hilEnabled: insertSession.hilEnabled ?? true,
+      id,
+      createdAt: /* @__PURE__ */ new Date()
+    };
+    this.sessions.set(id, session);
+    return session;
+  }
+  async getSession(id) {
+    return this.sessions.get(id);
+  }
+  async updateSession(id, updates) {
+    const session = this.sessions.get(id);
+    if (!session) return void 0;
+    const updatedSession = { ...session, ...updates };
+    this.sessions.set(id, updatedSession);
+    return updatedSession;
+  }
+  async deleteSession(id) {
+    this.sessions.delete(id);
+    Array.from(this.messages.entries()).forEach(([messageId, message]) => {
+      if (message.sessionId === id) {
+        this.messages.delete(messageId);
+      }
+    });
+  }
+  async createMessage(insertMessage) {
+    const id = randomUUID();
+    const message = {
+      ...insertMessage,
+      metadata: insertMessage.metadata ?? null,
+      id,
+      timestamp: /* @__PURE__ */ new Date()
+    };
+    this.messages.set(id, message);
+    return message;
+  }
+  async getMessages(sessionId) {
+    return Array.from(this.messages.values()).filter((message) => message.sessionId === sessionId).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  }
+  async clearMessages(sessionId) {
+    Array.from(this.messages.entries()).forEach(([messageId, message]) => {
+      if (message.sessionId === sessionId) {
+        this.messages.delete(messageId);
+      }
+    });
+  }
+};
+var storage = new MemStorage();
+
+// shared/schema.ts
+import { sql } from "drizzle-orm";
+import { pgTable, text, varchar, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+var sessions = pgTable("sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  systemPrompt: text("system_prompt").notNull(),
+  tacitKnowledge: text("tacit_knowledge").notNull(),
+  hilEnabled: boolean("hil_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow()
+});
+var messages = pgTable("messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").references(() => sessions.id).notNull(),
+  role: text("role").notNull(),
+  // 'user', 'assistant', 'system'
+  content: text("content").notNull(),
+  metadata: jsonb("metadata"),
+  // For storing agent status, reasoning steps, etc.
+  timestamp: timestamp("timestamp").defaultNow()
+});
+var insertSessionSchema = createInsertSchema(sessions).omit({
+  id: true,
+  createdAt: true
+});
+var insertMessageSchema = createInsertSchema(messages).omit({
+  id: true,
+  timestamp: true
+});
+var AgentStatus = z.enum(["idle", "reasoning", "consulting_knowledge", "awaiting_approval"]);
+var ProcessStep = z.enum(["codify", "govern", "test"]);
+
+// server/services/gemini.ts
+import { GoogleGenerativeAI } from "@google/generative-ai";
+var genAI = new GoogleGenerativeAI(
+  process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY_ENV_VAR || ""
+);
+async function generateAgentResponse(systemPrompt, tacitKnowledge, userMessage, conversationHistory, pdfContext, ragSources) {
+  const riskKeywords = [
+    "withdraw",
+    "transfer",
+    "sell all",
+    "entire",
+    "retirement fund",
+    "life savings",
+    "mortgage",
+    "loan",
+    "borrow",
+    "leverage",
+    "risky",
+    "speculative",
+    "gambling",
+    "crypto",
+    "bitcoin",
+    "startup investment",
+    "high risk",
+    "all in"
+  ];
+  const userMessageLower = userMessage.toLowerCase();
+  const isHighRisk = riskKeywords.some((keyword) => userMessageLower.includes(keyword)) || userMessageLower.includes("$") && (userMessageLower.includes("portfolio") || userMessageLower.includes("investment") || userMessageLower.includes("transfer"));
+  const reasoning = isHighRisk ? "Detected high-risk financial scenario - consulting tacit knowledge and flagging for review" : "Standard query processing";
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash"
+  });
+  let systemContext = `SYSTEM INSTRUCTIONS:
+${systemPrompt}
+
+PROPRIETARY KNOWLEDGE MODULE (Tacit Rules):
+${tacitKnowledge}`;
+  if (pdfContext && pdfContext.trim()) {
+    systemContext += `
+
+PDF DOCUMENT KNOWLEDGE:
+${pdfContext}`;
+  }
+  systemContext += `
+
+IMPORTANT: 
+1. ALWAYS prioritize Proprietary Knowledge (Tacit Rules) first
+2. Use PDF Document Knowledge for detailed policy information
+3. Clearly state which source(s) you're using in your response
+4. If using tacit rules, reference them explicitly
+
+Please acknowledge that you understand these instructions.`;
+  const chatHistory = [
+    {
+      role: "user",
+      parts: [{ text: systemContext }]
+    },
+    {
+      role: "model",
+      parts: [{ text: "I understand. I will prioritize the proprietary knowledge module and follow all system instructions provided." }]
+    },
+    ...conversationHistory.map((msg) => ({
+      role: msg.role === "user" ? "user" : "model",
+      parts: [{ text: msg.content }]
+    }))
+  ];
+  const chat = model.startChat({
+    history: chatHistory
+  });
+  const result = await chat.sendMessage(userMessage);
+  const response = result.response;
+  const knowledgeAreas = tacitKnowledge.split("\n").filter((line) => line.trim().match(/^\d+\./)).map((_, idx) => `Rule ${idx + 1}`);
+  const allKnowledgeSources = [...knowledgeAreas];
+  if (ragSources && ragSources.length > 0) {
+    allKnowledgeSources.push(...ragSources);
+  }
+  return {
+    content: response.text() || "I apologize, but I couldn't generate a response.",
+    reasoning,
+    requiresApproval: isHighRisk,
+    knowledgeUsed: isHighRisk ? allKnowledgeSources : ragSources && ragSources.length > 0 ? ragSources : []
+  };
+}
+async function processHumanApproval(originalResponse, approvalDecision, systemPrompt, tacitKnowledge) {
+  if (approvalDecision === "approve") {
+    return originalResponse;
+  }
+  if (approvalDecision === "reject") {
+    return "The expert has rejected the proposed action. Please provide alternative guidance or ask a different question.";
+  }
+  return "The expert has requested modifications. Please clarify your requirements.";
+}
+
+// server/services/rag.ts
+import { spawn } from "child_process";
+import path from "path";
+async function callPythonRag(command, ...args) {
+  return new Promise((resolve, reject) => {
+    const pythonScript = path.join(process.cwd(), "rag_service.py");
+    const python = spawn("uv", ["run", "python3", pythonScript, command, ...args]);
+    let stdout = "";
+    let stderr = "";
+    python.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+    python.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+    python.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`Python process exited with code ${code}: ${stderr}`));
+        return;
+      }
+      try {
+        const result = JSON.parse(stdout);
+        resolve(result);
+      } catch (error) {
+        reject(new Error(`Failed to parse Python output: ${stdout}`));
+      }
+    });
+    python.on("error", (error) => {
+      reject(error);
+    });
+  });
+}
+async function processPdf(pdfPath) {
+  try {
+    const result = await callPythonRag("process", pdfPath);
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error processing PDF"
+    };
+  }
+}
+async function queryRag(query, k = 3) {
+  try {
+    const result = await callPythonRag("query", query, k.toString());
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error querying RAG",
+      results: []
+    };
+  }
+}
+async function clearRag() {
+  try {
+    const result = await callPythonRag("clear");
+    return result;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error clearing RAG"
+    };
+  }
+}
+
+// server/services/agent.ts
+var TacitAgent = class {
+  currentStatus = "idle";
+  pendingResponse = null;
+  constructor() {
+  }
+  getStatus() {
+    return this.currentStatus;
+  }
+  async processMessage(userMessage, systemPrompt, tacitKnowledge, conversationHistory, hilEnabled) {
+    this.currentStatus = "reasoning";
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1e3));
+      this.currentStatus = "consulting_knowledge";
+      const ragResult = await queryRag(userMessage, 3);
+      let pdfContext = "";
+      const ragSources = [];
+      if (ragResult.success && ragResult.results && ragResult.results.length > 0) {
+        pdfContext = ragResult.results.map((doc, idx) => {
+          const page = doc.metadata.page || "?";
+          ragSources.push(`PDF Page ${page}`);
+          return `PDF Source (Page ${page}):
+${doc.content}`;
+        }).join("\n\n");
+      }
+      const response = await generateAgentResponse(
+        systemPrompt,
+        tacitKnowledge,
+        userMessage,
+        conversationHistory,
+        pdfContext,
+        ragSources
+      );
+      if (response.requiresApproval && hilEnabled) {
+        this.currentStatus = "awaiting_approval";
+        this.pendingResponse = response;
+        return {
+          content: `\u26A0\uFE0F HIGH-RISK SCENARIO DETECTED
+
+**Proposed Action:** ${response.content}
+
+**Rationale:** ${response.reasoning}
+
+**Knowledge Used:** ${response.knowledgeUsed.join(", ")}
+
+This action requires expert approval before proceeding.`,
+          status: "awaiting_approval",
+          requiresApproval: true,
+          reasoning: response.reasoning,
+          knowledgeUsed: response.knowledgeUsed
+        };
+      }
+      this.currentStatus = "idle";
+      return {
+        content: response.content,
+        status: "idle",
+        requiresApproval: false,
+        reasoning: response.reasoning,
+        knowledgeUsed: response.knowledgeUsed
+      };
+    } catch (error) {
+      this.currentStatus = "idle";
+      throw new Error(`Agent processing failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+  async handleHumanApproval(decision, systemPrompt, tacitKnowledge) {
+    if (!this.pendingResponse || this.currentStatus !== "awaiting_approval") {
+      throw new Error("No pending action to approve");
+    }
+    const processedResponse = await processHumanApproval(
+      this.pendingResponse.content,
+      decision,
+      systemPrompt,
+      tacitKnowledge
+    );
+    this.pendingResponse = null;
+    this.currentStatus = "idle";
+    return {
+      content: processedResponse,
+      status: "idle",
+      requiresApproval: false
+    };
+  }
+  reset() {
+    this.currentStatus = "idle";
+    this.pendingResponse = null;
+  }
+};
+var tacitAgent = new TacitAgent();
+
+// server/routes.ts
+import { z as z2 } from "zod";
+import multer from "multer";
+import path2 from "path";
+import fs from "fs/promises";
+async function registerRoutes(app2) {
+  const upload = multer({
+    storage: multer.diskStorage({
+      destination: async (req, file, cb) => {
+        const uploadDir = path2.join(process.cwd(), "uploads");
+        await fs.mkdir(uploadDir, { recursive: true });
+        cb(null, uploadDir);
+      },
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+        cb(null, `${uniqueSuffix}-${file.originalname}`);
+      }
+    }),
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype === "application/pdf") {
+        cb(null, true);
+      } else {
+        cb(new Error("Only PDF files are allowed"));
+      }
+    },
+    limits: {
+      fileSize: 10 * 1024 * 1024
+      // 10MB limit
+    }
+  });
+  app2.post("/api/sessions", async (req, res) => {
+    try {
+      const validatedData = insertSessionSchema.parse(req.body);
+      const session = await storage.createSession(validatedData);
+      res.json(session);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid session data" });
+    }
+  });
+  app2.get("/api/sessions/:id", async (req, res) => {
+    try {
+      const session = await storage.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      res.json(session);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to retrieve session" });
+    }
+  });
+  app2.patch("/api/sessions/:id", async (req, res) => {
+    try {
+      const updates = insertSessionSchema.partial().parse(req.body);
+      const session = await storage.updateSession(req.params.id, updates);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      res.json(session);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid update data" });
+    }
+  });
+  app2.delete("/api/sessions/:id", async (req, res) => {
+    try {
+      await storage.deleteSession(req.params.id);
+      tacitAgent.reset();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete session" });
+    }
+  });
+  app2.get("/api/sessions/:id/messages", async (req, res) => {
+    try {
+      const messages2 = await storage.getMessages(req.params.id);
+      res.json(messages2);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to retrieve messages" });
+    }
+  });
+  app2.post("/api/sessions/:id/messages", async (req, res) => {
+    try {
+      const { content } = z2.object({ content: z2.string() }).parse(req.body);
+      const session = await storage.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      await storage.createMessage({
+        sessionId: req.params.id,
+        role: "user",
+        content,
+        metadata: null
+      });
+      const messages2 = await storage.getMessages(req.params.id);
+      const conversationHistory = messages2.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: m.content }));
+      const agentResponse = await tacitAgent.processMessage(
+        content,
+        session.systemPrompt,
+        session.tacitKnowledge,
+        conversationHistory,
+        session.hilEnabled
+      );
+      const savedMessage = await storage.createMessage({
+        sessionId: req.params.id,
+        role: "assistant",
+        content: agentResponse.content,
+        metadata: {
+          status: agentResponse.status,
+          requiresApproval: agentResponse.requiresApproval,
+          reasoning: agentResponse.reasoning,
+          knowledgeUsed: agentResponse.knowledgeUsed
+        }
+      });
+      res.json({ message: savedMessage, agentStatus: agentResponse.status });
+    } catch (error) {
+      res.status(500).json({ error: `Failed to process message: ${error instanceof Error ? error.message : "Unknown error"}` });
+    }
+  });
+  app2.post("/api/sessions/:id/approval", async (req, res) => {
+    try {
+      const { decision } = z2.object({
+        decision: z2.enum(["approve", "reject", "modify"])
+      }).parse(req.body);
+      const session = await storage.getSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+      const agentResponse = await tacitAgent.handleHumanApproval(
+        decision,
+        session.systemPrompt,
+        session.tacitKnowledge
+      );
+      const savedMessage = await storage.createMessage({
+        sessionId: req.params.id,
+        role: "assistant",
+        content: agentResponse.content,
+        metadata: {
+          status: agentResponse.status,
+          approvalDecision: decision
+        }
+      });
+      res.json({ message: savedMessage, agentStatus: agentResponse.status });
+    } catch (error) {
+      res.status(500).json({ error: `Failed to process approval: ${error instanceof Error ? error.message : "Unknown error"}` });
+    }
+  });
+  app2.get("/api/agent/status", (req, res) => {
+    res.json({ status: tacitAgent.getStatus() });
+  });
+  app2.delete("/api/sessions/:id/messages", async (req, res) => {
+    try {
+      await storage.clearMessages(req.params.id);
+      tacitAgent.reset();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to clear messages" });
+    }
+  });
+  app2.post("/api/pdf/upload", upload.single("pdf"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No PDF file uploaded" });
+      }
+      const result = await processPdf(req.file.path);
+      try {
+        await fs.unlink(req.file.path);
+      } catch (cleanupError) {
+        console.error("Failed to cleanup uploaded file:", cleanupError);
+      }
+      if (!result.success) {
+        return res.status(500).json({ error: result.error });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({
+        error: `Failed to process PDF: ${error instanceof Error ? error.message : "Unknown error"}`
+      });
+    }
+  });
+  app2.post("/api/pdf/query", async (req, res) => {
+    try {
+      const { query, k = 3 } = z2.object({
+        query: z2.string(),
+        k: z2.number().optional().default(3)
+      }).parse(req.body);
+      const result = await queryRag(query, k);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({
+        error: `Failed to query RAG: ${error instanceof Error ? error.message : "Unknown error"}`,
+        results: []
+      });
+    }
+  });
+  app2.delete("/api/pdf/clear", async (req, res) => {
+    try {
+      const result = await clearRag();
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({
+        error: `Failed to clear RAG: ${error instanceof Error ? error.message : "Unknown error"}`
+      });
+    }
+  });
+  const httpServer = createServer(app2);
+  return httpServer;
+}
+
+// server/vite.ts
+import express from "express";
+import fs2 from "fs";
+import path4 from "path";
+import { createServer as createViteServer, createLogger } from "vite";
+
+// vite.config.ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path3 from "path";
+import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+var vite_config_default = defineConfig({
+  plugins: [
+    react(),
+    runtimeErrorOverlay(),
+    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
+      await import("@replit/vite-plugin-cartographer").then(
+        (m) => m.cartographer()
+      ),
+      await import("@replit/vite-plugin-dev-banner").then(
+        (m) => m.devBanner()
+      )
+    ] : []
+  ],
+  resolve: {
+    alias: {
+      "@": path3.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path3.resolve(import.meta.dirname, "shared"),
+      "@assets": path3.resolve(import.meta.dirname, "attached_assets")
+    }
+  },
+  root: path3.resolve(import.meta.dirname, "client"),
+  build: {
+    outDir: path3.resolve(import.meta.dirname, "dist/public"),
+    emptyOutDir: true
+  },
+  server: {
+    fs: {
+      strict: true,
+      deny: ["**/.*"]
+    }
+  }
+});
+
+// server/vite.ts
+import { nanoid } from "nanoid";
+var viteLogger = createLogger();
+function log(message, source = "express") {
+  const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
+async function setupVite(app2, server) {
+  const serverOptions = {
+    middlewareMode: true,
+    hmr: { server },
+    allowedHosts: true
+  };
+  const vite = await createViteServer({
+    ...vite_config_default,
+    configFile: false,
+    customLogger: {
+      ...viteLogger,
+      error: (msg, options) => {
+        viteLogger.error(msg, options);
+        process.exit(1);
+      }
+    },
+    server: serverOptions,
+    appType: "custom"
+  });
+  app2.use(vite.middlewares);
+  app2.use("*", async (req, res, next) => {
+    const url = req.originalUrl;
+    try {
+      const clientTemplate = path4.resolve(
+        import.meta.dirname,
+        "..",
+        "client",
+        "index.html"
+      );
+      let template = await fs2.promises.readFile(clientTemplate, "utf-8");
+      template = template.replace(
+        `src="/src/main.tsx"`,
+        `src="/src/main.tsx?v=${nanoid()}"`
+      );
+      const page = await vite.transformIndexHtml(url, template);
+      res.status(200).set({ "Content-Type": "text/html" }).end(page);
+    } catch (e) {
+      vite.ssrFixStacktrace(e);
+      next(e);
+    }
+  });
+}
+function serveStatic(app2) {
+  const distPath = path4.resolve(import.meta.dirname, "public");
+  if (!fs2.existsSync(distPath)) {
+    throw new Error(
+      `Could not find the build directory: ${distPath}, make sure to build the client first`
+    );
+  }
+  app2.use(express.static(distPath));
+  app2.use("*", (_req, res) => {
+    res.sendFile(path4.resolve(distPath, "index.html"));
+  });
+}
+
+// server/index.ts
+var app = express2();
+app.use(express2.json({
+  verify: (req, _res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+app.use(express2.urlencoded({ extended: false }));
+app.use((req, res, next) => {
+  const start = Date.now();
+  const path5 = req.path;
+  let capturedJsonResponse = void 0;
+  const originalResJson = res.json;
+  res.json = function(bodyJson, ...args) {
+    capturedJsonResponse = bodyJson;
+    return originalResJson.apply(res, [bodyJson, ...args]);
+  };
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    if (path5.startsWith("/api")) {
+      let logLine = `${req.method} ${path5} ${res.statusCode} in ${duration}ms`;
+      if (capturedJsonResponse) {
+        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+      }
+      if (logLine.length > 80) {
+        logLine = logLine.slice(0, 79) + "\u2026";
+      }
+      log(logLine);
+    }
+  });
+  next();
+});
+(async () => {
+  const server = await registerRoutes(app);
+  app.use((err, _req, res, _next) => {
+    const status = err.status || err.statusCode || 500;
+    const message = err.message || "Internal Server Error";
+    res.status(status).json({ message });
+    throw err;
+  });
+  if (app.get("env") === "development") {
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
+  const port = parseInt(process.env.PORT || "5000", 10);
+  server.listen({
+    port,
+    host: "0.0.0.0",
+    reusePort: true
+  }, () => {
+    log(`serving on port ${port}`);
+  });
+})();

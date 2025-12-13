@@ -73,15 +73,16 @@ function computeTfIdf(query: string, documents: DocumentChunk[]): Map<number, nu
 
 export async function processPdf(pdfBuffer: Buffer, filename: string): Promise<RagResult> {
   try {
-    const pdfParse = (await import('pdf-parse')).default;
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require('pdf-parse');
     const data = await pdfParse(pdfBuffer);
     
-    const text = data.text;
-    const pages = text.split(/\f/).filter(p => p.trim());
+    const text: string = data.text;
+    const pages: string[] = text.split(/\f/).filter((p: string) => p.trim());
     
     const chunks: DocumentChunk[] = [];
-    pages.forEach((pageContent, pageIndex) => {
-      const paragraphs = pageContent.split(/\n\n+/).filter(p => p.trim().length > 50);
+    pages.forEach((pageContent: string, pageIndex: number) => {
+      const paragraphs: string[] = pageContent.split(/\n\n+/).filter((p: string) => p.trim().length > 50);
       
       if (paragraphs.length === 0 && pageContent.trim().length > 50) {
         chunks.push({
@@ -92,7 +93,7 @@ export async function processPdf(pdfBuffer: Buffer, filename: string): Promise<R
           }
         });
       } else {
-        paragraphs.forEach(paragraph => {
+        paragraphs.forEach((paragraph: string) => {
           chunks.push({
             content: paragraph.trim(),
             metadata: {
