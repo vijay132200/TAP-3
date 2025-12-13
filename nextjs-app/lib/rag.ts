@@ -73,9 +73,9 @@ function computeTfIdf(query: string, documents: DocumentChunk[]): Map<number, nu
 
 export async function processPdf(pdfBuffer: Buffer, filename: string): Promise<RagResult> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require('pdf-parse');
-    const data = await pdfParse(pdfBuffer);
+    const pdfParseModule = await import('pdf-parse');
+    const pdfParse = pdfParseModule.default;
+    const data: { text: string; numpages: number } = await pdfParse(pdfBuffer);
     
     const text: string = data.text;
     const pages: string[] = text.split(/\f/).filter((p: string) => p.trim());
