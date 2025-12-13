@@ -21,13 +21,16 @@
 [x] 14. Installed scikit-learn dependencies successfully
 [x] 15. Restarted workflow - server running on port 5000
 
-## Final Migration Steps
-[x] 16. Ran npm install to restore node_modules
-[x] 17. Restarted workflow - application running successfully
-[x] 18. Verified logs - server serving on port 5000, API endpoints responding
+## Vercel Deployment Issue
+[x] 16. Identified Vercel incompatibility issues:
+    - In-memory storage (MemStorage) is stateless on Vercel
+    - Python RAG service (child process spawning) not supported
+    - File uploads with multer won't persist
+    - Express server needs long-running process, not serverless
+[x] 17. Recommended using Replit's built-in publishing instead of Vercel
 
 ## Current Status
-- ✅ Application running successfully on port 5000
-- ✅ All Node.js dependencies installed
-- ✅ PDF upload uses TF-IDF (no API keys required, no rate limits)
-- ✅ Migration complete - ready to use
+- ✅ Application running successfully on port 5000 (Replit)
+- ✅ PDF upload now uses TF-IDF (no API keys required, no rate limits)
+- ✅ Lightweight solution with minimal disk usage
+- ⚠️ Vercel deployment not compatible - use Replit publishing instead
